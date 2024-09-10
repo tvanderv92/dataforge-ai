@@ -1,5 +1,7 @@
+import json
+
 from dataforge_ai.core.plugin_interface import PluginInterface
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableSerializable
@@ -11,28 +13,48 @@ class PipelineGeneratorPlugin(PluginInterface):
         self.llm = llm
         self.prompt_generator = prompt_generator
 
-    def execute(self, input_data: Dict[str, Any]) -> str:
+    def execute(self, input_data: Union[str, Dict[str, Any]]) -> str:
         """
         Generate a data pipeline based on the input configuration.
 
-        :param input_data: A dictionary containing the pipeline configuration.
+        :param input_data: A dictionary or JSON string containing the pipeline configuration.
         :return: Generated pipeline code as a string.
         """
         self.log_execution("Starting pipeline generation")
+
+        # Parse input_data if it's a string
+        if isinstance(input_data, str):
+            try:
+                # Remove any leading/trailing whitespace and code block markers
+                input_data = input_data.strip().lstrip('`').rstrip('`')
+                if input_data.startswith('json'):
+                    input_data = input_data[4:].lstrip()
+                input_data = json.loads(input_data)
+            except json.JSONDecodeError as e:
+                self.log_execution(f"Error parsing JSON: {str(e)}", level="error")
+                raise ValueError(f"Invalid JSON string provided as input_data: {str(e)}")
+
         if not self.validate_input(input_data):
-            raise ValueError("Invalid input data")
+            raise ValueError("Invalid input data structure")
 
-        prompt = self.prompt_generator.execute({
-            "prompt_type": "data_pipeline",
-            "parameters": input_data
-        })
+        try:
+            prompt_data = self.prompt_generator.execute({
+                "prompt_type": "data_pipeline",
+                "parameters": input_data
+            })
 
-        pipeline_template = PromptTemplate(template=prompt, input_variables=[])
-        pipeline_chain = pipeline_template | self.llm | StrOutputParser()
-        pipeline_code = pipeline_chain.invoke({})
+            pipeline_template = PromptTemplate(
+                template=prompt_data["template"],
+                input_variables=prompt_data["input_variables"]
+            )
+            pipeline_chain = pipeline_template | self.llm | StrOutputParser()
+            pipeline_code = pipeline_chain.invoke(prompt_data["formatted_params"])
 
-        self.log_execution("Pipeline generation completed")
-        return pipeline_code
+            self.log_execution("Pipeline generation completed")
+            return pipeline_code
+        except Exception as e:
+            self.log_execution(f"Error during pipeline generation: {str(e)}", level="error")
+            raise
 
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         """
@@ -41,12 +63,55 @@ class PipelineGeneratorPlugin(PluginInterface):
         :param input_data: A dictionary containing the input data for the plugin.
         :return: True if the input is valid, False otherwise.
         """
-        required_keys = ['source', 'destination']
+        required_keys = ['source', 'destination', 'pipeline_name', 'schedule']
         if not all(key in input_data for key in required_keys):
             self.log_execution("Input validation failed: missing required keys", level="error")
             return False
 
-        # Add more specific validation for pipeline inputs if needed
+        # Validate source configuration
+        if not self._validate_source_config(input_data['source']):
+            return False
+
+        # Validate destination configuration
+        if not self._validate_destination_config(input_data['destination']):
+            return False
+
+        return True
+
+    def _validate_source_config(self, source_config: Dict[str, Any]) -> bool:
+        """
+        Validate the source configuration.
+
+        :param source_config: The source configuration dictionary.
+        :return: True if valid, False otherwise.
+        """
+        if source_config.get('type') != 'rest_api':
+            self.log_execution("Invalid source type", level="error")
+            return False
+
+        required_source_keys = ['config']
+        if not all(key in source_config for key in required_source_keys):
+            self.log_execution("Missing required source configuration keys", level="error")
+            return False
+
+        return True
+
+    def _validate_destination_config(self, destination_config: Dict[str, Any]) -> bool:
+        """
+        Validate the destination configuration.
+
+        :param destination_config: The destination configuration dictionary.
+        :return: True if valid, False otherwise.
+        """
+        if destination_config.get('type') != 'azure_blob':
+            self.log_execution("Invalid destination type", level="error")
+            return False
+
+        required_dest_keys = ['config']
+        if not all(key in destination_config for key in required_dest_keys):
+            self.log_execution("Missing required destination configuration keys", level="error")
+            return False
+
         return True
 
     def get_input_schema(self) -> Dict[str, Any]:

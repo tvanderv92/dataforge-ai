@@ -77,7 +77,7 @@ def main():
         "destination": {
             "type": "azure_blob",
             "config": {
-                "account_name": os.getenv("AZURE_STORAGE_ACCOUNT_NAME"),
+                "account_name": os.getenv("AZURE_STORAGE_ACCOUNT_NAME"),  # Ensure this environment variable is set
                 "account_key": os.getenv("AZURE_STORAGE_ACCOUNT_KEY"),
                 "container_name": "pokemon-data",
                 "folder_path": "raw_data"

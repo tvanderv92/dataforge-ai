@@ -1,5 +1,8 @@
+import ast
+import json
+
 from dataforge_ai.core.plugin_interface import PluginInterface
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from langchain_openai import AzureChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -15,7 +18,7 @@ class GenAIPromptGenerator(PluginInterface):
             api_key=azure_api_key,
             api_version="2023-03-15-preview",
             temperature=0.7,
-            max_tokens=32768
+            max_tokens=4096
         )
 
     def execute(self, input_data: Dict[str, Any]) -> str:
@@ -68,16 +71,22 @@ class GenAIPromptGenerator(PluginInterface):
         prompt = PromptTemplate(template=template, input_variables=input_variables)
         return prompt | self.llm | StrOutputParser()
 
-    def _generate_data_pipeline_prompt(self, parameters: Dict[str, Any]) -> str:
+    def _generate_data_pipeline_prompt(self, parameters: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
         template = """
         Create a data pipeline that extracts data from {source_type} and loads it into {destination_type}.
         The source details are: {source_details}
         The destination details are: {destination_details}
         Additional requirements: {requirements}
-
+    
         Generate a Python script to implement this pipeline.
         Include error handling, logging, and best practices for data pipeline development.
         """
+
+        # Convert parameters to dictionary if it's a string
+        if isinstance(parameters, str):
+            parameters = self._parse_parameters_string(parameters)
+
+        # Format the parameters for the prompt
         formatted_params = {
             "source_type": parameters['source']['type'],
             "destination_type": parameters['destination']['type'],
@@ -85,7 +94,26 @@ class GenAIPromptGenerator(PluginInterface):
             "destination_details": str(parameters['destination']['config']),
             "requirements": f"Pipeline name: {parameters['pipeline_name']}, Schedule: {parameters['schedule']}"
         }
-        return self._create_chain(template, list(formatted_params.keys())).invoke(formatted_params)
+
+        return {
+            "template": template,
+            "input_variables": list(formatted_params.keys()),
+            "formatted_params": formatted_params
+        }
+
+    def _parse_parameters_string(self, parameters_str: str) -> Dict[str, Any]:
+        """
+        Helper method to parse a string of parameters into a dictionary.
+        Tries to parse using both `ast.literal_eval` and `json.loads`.
+        Raises a `ValueError` if the string cannot be parsed.
+        """
+        try:
+            return ast.literal_eval(parameters_str)
+        except (ValueError, SyntaxError):
+            try:
+                return json.loads(parameters_str)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Unable to parse parameters string: {e}")
 
     def _generate_code_explanation_prompt(self, parameters: Dict[str, Any]) -> str:
         template = """
@@ -126,9 +154,9 @@ class GenAIPromptGenerator(PluginInterface):
     def _generate_airflow_dag_prompt(self, parameters: Dict[str, Any]) -> str:
         template = """
         Convert the following dlt pipeline code to an Apache Airflow DAG:
-
+    
         {pipeline_code}
-
+    
         Consider the following requirements:
         1. Import necessary Airflow modules
         2. Define the DAG using airflow.DAG
@@ -136,11 +164,10 @@ class GenAIPromptGenerator(PluginInterface):
         4. Set up proper scheduling and default arguments
         5. Include any necessary environment variables or connections
         6. Implement error handling and logging for the Airflow task
-
+    
         Generate the Airflow DAG code that implements this pipeline.
         """
-        chain = self._create_chain(template, ["pipeline_code"])
-        return chain.invoke(parameters)
+        return template
 
     def _generate_dlt_pipeline_prompt(self, parameters: Dict[str, Any]) -> str:
         template = """

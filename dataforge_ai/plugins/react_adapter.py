@@ -1,3 +1,5 @@
+import json
+
 from dataforge_ai.core.plugin_interface import PluginInterface
 from langchain.agents import Tool, AgentExecutor, create_react_agent
 from langchain.schema import AgentAction, AgentFinish
@@ -78,7 +80,7 @@ class ReactAdapter(PluginInterface):
             raise ValueError("Invalid input data")
 
         agent_input = {
-            "input": f"Generate a data pipeline for the following configuration and convert it to an Airflow DAG:\n{str(input_data)}",
+            "input": json.dumps(input_data),
             "tools": "\n".join([f"- {tool.name}: {tool.description}" for tool in self.tools]),
             "tool_names": ", ".join([tool.name for tool in self.tools])
         }
@@ -87,17 +89,18 @@ class ReactAdapter(PluginInterface):
             result = self.agent_executor.invoke(agent_input)
             self.log_execution("ReAct reasoning process completed")
 
-            output = result.get('output', '')
-            pipeline_code = ''
-            airflow_dag = ''
+            # Extract pipeline code and Airflow DAG from the result
+            pipeline_code = self._extract_code(result['output'], "Generated Pipeline Code:")
+            airflow_dag = self._extract_code(result['output'], "Generated Airflow DAG:")
 
-            if "Generated Pipeline Code:" in output and "Generated Airflow DAG:" in output:
-                parts = output.split("Generated Airflow DAG:")
-                pipeline_code = parts[0].split("Generated Pipeline Code:")[1].strip()
-                airflow_dag = parts[1].strip()
-            else:
-                pipeline_code = "No pipeline code generated"
-                airflow_dag = "No Airflow DAG generated"
+            # If Airflow DAG is not generated, try to convert the pipeline code to DAG
+            if not airflow_dag or airflow_dag == "No code generated":
+                self.log_execution("Airflow DAG not generated. Attempting conversion.")
+                try:
+                    airflow_dag = self.dag_converter.execute({"pipeline_code": pipeline_code})
+                except Exception as e:
+                    self.log_execution(f"Error converting to Airflow DAG: {str(e)}", level="error")
+                    airflow_dag = "Error generating Airflow DAG"
 
             return {
                 "pipeline_code": pipeline_code,
@@ -106,6 +109,17 @@ class ReactAdapter(PluginInterface):
         except Exception as e:
             self.log_execution(f"Error in ReAct reasoning process: {str(e)}", level="error")
             raise
+
+    def _extract_code(self, text: str, marker: str) -> str:
+        if marker in text:
+            code_start = text.index(marker) + len(marker)
+            code_end = text.find("\n\n", code_start)
+            if code_end == -1:  # If no double newline, take until the end
+                code_end = len(text)
+            code = text[code_start:code_end].strip()
+            # Remove any code block markers
+            return code.lstrip('`').rstrip('`')
+        return "No code generated"
 
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         required_keys = ['source', 'destination']
