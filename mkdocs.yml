@@ -1,0 +1,54 @@
+site_name: dataforge-ai
+repo_url: https://github.com/tvanderv92/dataforge-ai
+site_url: https://tvanderv92.github.io/dataforge-ai
+site_description: DataForge-AI is a Python framework that automates the creation of data pipelines using Generative AI. It integrates AlphaCodium for code generation and DLHub for building pipelines that can be converted into Airflow DAGs, all within a Microkernel architecture.
+site_author: Tristan van der Vlugt
+edit_uri: edit/main/docs/
+repo_name: tvanderv92/dataforge-ai
+copyright: Maintained by <a href="https://tvanderv92.com">Florian</a>.
+
+nav:
+  - Home: index.md
+  - Modules: modules.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+            setup_commands:
+                - import sys
+                - sys.path.append('../')
+theme:
+  name: material
+  feature:
+    tabs: true
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: white
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/tvanderv92/dataforge-ai
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/dataforge-ai
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
