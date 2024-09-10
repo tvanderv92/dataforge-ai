@@ -89,9 +89,11 @@ class ReactAdapter(PluginInterface):
             result = self.agent_executor.invoke(agent_input)
             self.log_execution("ReAct reasoning process completed")
 
+            output = result.get('output', '')
+
             # Extract pipeline code and Airflow DAG from the result
-            pipeline_code = self._extract_code(result['output'], "Generated Pipeline Code:")
-            airflow_dag = self._extract_code(result['output'], "Generated Airflow DAG:")
+            pipeline_code = self._extract_code(output, "Generated Data Pipeline:")
+            airflow_dag = self._extract_code(output, "Converted Airflow DAG:")
 
             # If Airflow DAG is not generated, try to convert the pipeline code to DAG
             if not airflow_dag or airflow_dag == "No code generated":
@@ -103,8 +105,9 @@ class ReactAdapter(PluginInterface):
                     airflow_dag = "Error generating Airflow DAG"
 
             return {
-                "pipeline_code": pipeline_code,
-                "airflow_dag": airflow_dag
+                "output": output,
+                "pipeline_code": self._extract_code(output, "Generated Data Pipeline:"),
+                "airflow_dag": self._extract_code(output, "Final Answer:")
             }
         except Exception as e:
             self.log_execution(f"Error in ReAct reasoning process: {str(e)}", level="error")

@@ -77,7 +77,7 @@ def main():
         "destination": {
             "type": "azure_blob",
             "config": {
-                "account_name": os.getenv("AZURE_STORAGE_ACCOUNT_NAME"),  # Ensure this environment variable is set
+                "account_name": os.getenv("AZURE_STORAGE_ACCOUNT_NAME"),
                 "account_key": os.getenv("AZURE_STORAGE_ACCOUNT_KEY"),
                 "container_name": "pokemon-data",
                 "folder_path": "raw_data"
@@ -94,17 +94,46 @@ def main():
         ]
     })
 
-    print("Generated dlt Pipeline Code:")
-    print(result.get("react_reasoner", {}).get("pipeline_code", "No pipeline code generated"))
-    print("\nGenerated Airflow DAG:")
-    print(result.get("react_reasoner", {}).get("airflow_dag", "No Airflow DAG generated"))
+    react_result = result.get("react_reasoner", {})
+    full_output = react_result.get("output", "")
 
-    # Optionally, save the generated code to files
+    # Extract pipeline code
+    pipeline_code = extract_code_block(full_output, "Generated Data Pipeline:")
+    if not pipeline_code or pipeline_code == "No code found":
+        pipeline_code = react_result.get("pipeline_code", "No pipeline code generated")
+
+    # Extract Airflow DAG
+    airflow_dag = extract_code_block(full_output, "Final Answer:")
+    if not airflow_dag or airflow_dag == "No code found":
+        airflow_dag = react_result.get("airflow_dag", "No Airflow DAG generated")
+
+    print("Generated dlt Pipeline Code:")
+    print(pipeline_code)
+    print("\nGenerated Airflow DAG:")
+    print(airflow_dag)
+
+    # Save the generated code to files
     with open("generated_pokemon_pipeline.py", "w") as f:
-        f.write(result.get("pipeline_code", ""))
+        f.write(pipeline_code)
 
     with open("generated_pokemon_dag.py", "w") as f:
-        f.write(result.get("airflow_dag", ""))
+        f.write(airflow_dag)
+
+
+def extract_code_block(text, marker):
+    start = text.find(marker)
+    if start == -1:
+        return "No code found"
+    start = text.find("```python", start)
+    if start == -1:
+        start = text.find("```", start)  # Try without 'python' specifier
+    if start == -1:
+        return text[text.find("\n", start) + 1:]  # If no code block, return all text after marker
+    start += 3  # Move past the ```
+    end = text.find("```", start)
+    if end == -1:
+        return text[start:]
+    return text[start:end].strip()
 
 
 if __name__ == "__main__":
