@@ -91,38 +91,34 @@ class ReactAdapter(PluginInterface):
 
             output = result.get('output', '')
 
-            # Extract pipeline code and Airflow DAG from the result
-            pipeline_code = self._extract_code(output, "Generated Data Pipeline:")
-            airflow_dag = self._extract_code(output, "Converted Airflow DAG:")
-
-            # If Airflow DAG is not generated, try to convert the pipeline code to DAG
-            if not airflow_dag or airflow_dag == "No code generated":
-                self.log_execution("Airflow DAG not generated. Attempting conversion.")
-                try:
-                    airflow_dag = self.dag_converter.execute({"pipeline_code": pipeline_code})
-                except Exception as e:
-                    self.log_execution(f"Error converting to Airflow DAG: {str(e)}", level="error")
-                    airflow_dag = "Error generating Airflow DAG"
+            # Extract code from the output
+            code = self._extract_code(output)
 
             return {
                 "output": output,
-                "pipeline_code": self._extract_code(output, "Generated Data Pipeline:"),
-                "airflow_dag": self._extract_code(output, "Final Answer:")
+                "pipeline_code": code,
+                "airflow_dag": code  # Since the pipeline is integrated into the DAG
             }
         except Exception as e:
             self.log_execution(f"Error in ReAct reasoning process: {str(e)}", level="error")
             raise
 
-    def _extract_code(self, text: str, marker: str) -> str:
-        if marker in text:
-            code_start = text.index(marker) + len(marker)
-            code_end = text.find("\n\n", code_start)
-            if code_end == -1:  # If no double newline, take until the end
-                code_end = len(text)
-            code = text[code_start:code_end].strip()
-            # Remove any code block markers
-            return code.lstrip('`').rstrip('`')
-        return "No code generated"
+    def _extract_code(self, text: str, marker: str = "") -> str:
+        # Find the marker if provided, otherwise start from the beginning
+        start = text.find(marker) + 1 if marker and (start := text.find(marker)) != -1 else 0
+        if marker and start == 0:
+            return "No code found"
+
+        # Locate code block boundaries
+        code_start = text.find("```", start)
+        if code_start == -1:
+            return "No code block found"
+
+        code_start = text.find("\n", code_start) + 1
+        code_end = text.find("```", code_start) if text.find("```", code_start) != -1 else len(text)
+
+        # Extract and return the cleaned code block
+        return text[code_start:code_end].strip()
 
     def validate_input(self, input_data: Dict[str, Any]) -> bool:
         required_keys = ['source', 'destination']

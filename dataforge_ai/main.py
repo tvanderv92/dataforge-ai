@@ -98,12 +98,12 @@ def main():
     full_output = react_result.get("output", "")
 
     # Extract pipeline code
-    pipeline_code = extract_code_block(full_output, "Generated Data Pipeline:")
+    pipeline_code = extract_code_block(full_output, "1. **Generate the Data Pipeline Script**:")
     if not pipeline_code or pipeline_code == "No code found":
         pipeline_code = react_result.get("pipeline_code", "No pipeline code generated")
 
     # Extract Airflow DAG
-    airflow_dag = extract_code_block(full_output, "Final Answer:")
+    airflow_dag = extract_code_block(full_output, "2. **Convert to Airflow DAG**:")
     if not airflow_dag or airflow_dag == "No code found":
         airflow_dag = react_result.get("airflow_dag", "No Airflow DAG generated")
 
@@ -124,16 +124,16 @@ def extract_code_block(text, marker):
     start = text.find(marker)
     if start == -1:
         return "No code found"
-    start = text.find("```python", start)
-    if start == -1:
-        start = text.find("```", start)  # Try without 'python' specifier
-    if start == -1:
-        return text[text.find("\n", start) + 1:]  # If no code block, return all text after marker
-    start += 3  # Move past the ```
-    end = text.find("```", start)
-    if end == -1:
-        return text[start:]
-    return text[start:end].strip()
+
+    # Find the start of the code block after the marker
+    start = text.find("\n", start) + 1
+    end = text.find("\n\n", start) if text.find("\n\n", start) != -1 else len(text)
+
+    # Extract and clean the code block
+    code_block = text[start:end].strip()
+    code_block = code_block.lstrip("```python").lstrip("```").rstrip("```").strip()
+
+    return code_block
 
 
 if __name__ == "__main__":
