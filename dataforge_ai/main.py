@@ -1,3 +1,5 @@
+import re
+
 from dataforge_ai.core.microkernel import Microkernel
 from dataforge_ai.plugins.genai_prompt_generator import GenAIPromptGenerator
 from dataforge_ai.plugins.react_adapter import ReactAdapter
@@ -99,7 +101,7 @@ def main():
     full_output = react_result.get("output", "")
 
     # Extract pipeline code
-    pipeline_code = extract_code_block(full_output, "1. **Generate the Data Pipeline Script**:")
+    pipeline_code = extract_code_blocks(full_output)
     if not pipeline_code or pipeline_code == "No code found":
         pipeline_code = react_result.get("pipeline_code", "No pipeline code generated")
 
@@ -121,20 +123,25 @@ def main():
     #     f.write(airflow_dag)
 
 
-def extract_code_block(text, marker):
-    start = text.find(marker)
-    if start == -1:
+def extract_code_blocks(text):
+    """
+    Extracts all code blocks from the given text and returns them as a single combined string.
+
+    Args:
+        text (str): The text containing code blocks to extract.
+
+    Returns:
+        str: Combined extracted code blocks as a single string, or "No code found" if no code blocks are found.
+    """
+    # Regular expression to capture code blocks enclosed in triple backticks (```python ... ```).
+    code_blocks = re.findall(r'```python(.*?)```', text, re.DOTALL)
+
+    if not code_blocks:
         return "No code found"
 
-    # Find the start of the code block after the marker
-    start = text.find("\n", start) + 1
-    end = text.find("\n\n", start) if text.find("\n\n", start) != -1 else len(text)
-
-    # Extract and clean the code block
-    code_block = text[start:end].strip()
-    code_block = code_block.lstrip("```python").lstrip("```").rstrip("```").strip()
-
-    return code_block
+    # Join all extracted code blocks with a newline separator for readability.
+    combined_code = "\n\n".join(block.strip() for block in code_blocks)
+    return combined_code
 
 
 if __name__ == "__main__":
