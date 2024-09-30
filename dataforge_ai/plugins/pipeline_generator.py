@@ -21,22 +21,28 @@ class PipelineGeneratorPlugin(PluginInterface):
         :return: Generated pipeline code as a string.
         """
         self.log_execution("Starting pipeline generation")
+        self.log_execution(f"Received input data: {input_data}", level="debug")
 
-        # Parse input_data if it's a string
-        if isinstance(input_data, str):
-            try:
-                # Remove markdown code block markers if present
-                input_data = input_data.strip()
-                if input_data.startswith("```json"):
-                    input_data = input_data[7:]  # Remove ```json
-                if input_data.endswith("```"):
-                    input_data = input_data[:-3]  # Remove trailing ```
+        try:
+            # Remove markdown code block markers if present
+            input_data = input_data.strip()
 
-                # Parse the JSON
-                input_data = json.loads(input_data.strip())
-            except json.JSONDecodeError as e:
-                self.log_execution(f"Error parsing JSON: {str(e)}", level="error")
-                raise ValueError(f"Invalid JSON string provided as input_data: {str(e)}")
+            # If the string starts with some introductory text, remove it until the first '{'
+            if "```json" in input_data:
+                input_data = input_data.split("```json")[-1]  # Get everything after ```json
+            if "```" in input_data:
+                input_data = input_data.split("```")[0]  # Get everything before the closing ```
+
+            # Remove any leading text before the first '{'
+            json_start_index = input_data.find("{")
+            if json_start_index != -1:
+                input_data = input_data[json_start_index:]  # Only keep the JSON part
+
+            # Parse the cleaned JSON string
+            input_data = json.loads(input_data)
+        except json.JSONDecodeError as e:
+            self.log_execution(f"Error parsing JSON: {str(e)}", level="error")
+            raise ValueError(f"Invalid JSON string provided as input_data: {str(e)}")
 
 
         if not self.validate_input(input_data):
@@ -47,6 +53,8 @@ class PipelineGeneratorPlugin(PluginInterface):
                 "prompt_type": "data_pipeline",
                 "parameters": input_data
             })
+
+
 
             pipeline_template = PromptTemplate(
                 template=prompt_data["template"],

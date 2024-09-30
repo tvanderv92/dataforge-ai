@@ -86,6 +86,8 @@ class GenAIPromptGenerator(PluginInterface):
         Include error handling, logging, and best practices for data pipeline development.
         """
 
+        print("Generated Template:", template)  # Log the template to inspect variables
+
         # Convert parameters to dictionary if it's a string
         if isinstance(parameters, str):
             parameters = self._parse_parameters_string(parameters)
@@ -98,6 +100,15 @@ class GenAIPromptGenerator(PluginInterface):
             "destination_details": str(parameters['destination']['config']),
             "requirements": f"Pipeline name: {parameters['pipeline_name']}, Schedule: {parameters['schedule']}"
         }
+
+            # Ensure that only the defined keys are in formatted_params
+        defined_keys = {"source_type", "destination_type", "source_details", "destination_details", "requirements"}
+        for key in formatted_params.keys():
+            if key not in defined_keys:
+                self.log_execution(f"Unexpected key '{key}' found in formatted_params", level="warning")
+
+        # Log the formatted parameters for debugging
+        self.log_execution(f"Formatted parameters: {formatted_params}", level="debug")
 
         return {
             "template": template,
@@ -184,6 +195,8 @@ class GenAIPromptGenerator(PluginInterface):
     def _generate_dlt_pipeline_prompt(self, parameters: Dict[str, Any]) -> dict[
         str, str | list[str] | dict[str, str | Any]]:
         template = """
+        Note: This template has been adjusted to prevent unintentional extraction of `id`,`limit` and `type` as template variables. Double curly braces `{{ }}` are used around these placeholders to treat them as literal strings.
+
         Create a data pipeline using the dlt (data load tool) library to extract data from a REST API and load it into Azure Blob Storage (using the 'filesystem' destination in dlt).
         
         Source details:
@@ -245,7 +258,7 @@ class GenAIPromptGenerator(PluginInterface):
                                name="resource1",
                                endpoint=dict(
                                    path="resource1",
-                                   params={"limit": 100},
+                                   params={{"limit": 100}},
                                ),
                                primary_key="id",
                                write_disposition="merge",
@@ -254,8 +267,8 @@ class GenAIPromptGenerator(PluginInterface):
                            dict(
                                name="related_resource",
                                endpoint=dict(
-                                   path="resource1/{id}/related",
-                                   params={"id": {"type": "resolve", "resource": "resource1", "field": "id"}},
+                                   path="resource1/{{id}}/related"
+                                   params={{"id": {{"type": "resolve", "resource": "resource1", "field": "id"}}}},
                                ),
                                include_from_parent=["name"],
                            ),
@@ -332,6 +345,9 @@ class GenAIPromptGenerator(PluginInterface):
             "dataset_name": parameters['dataset_name'],
             "schedule": parameters['schedule']
         }
+
+        print("Generated Template:", template)  # Log the template to inspect variables
+
 
         return {
             "template": template,

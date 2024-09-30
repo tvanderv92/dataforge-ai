@@ -87,7 +87,7 @@ class ReactAdapter(PluginInterface):
 
         try:
             self.agent_executor = AgentExecutor.from_agent_and_tools(
-                agent=self.agent, tools=self.tools, verbose=True, handle_parsing_errors=True
+                agent=self.agent, tools=self.tools, verbose=True, handle_parsing_errors=False
             )
             result = self.agent_executor.invoke(agent_input)
             self.log_execution("ReAct reasoning process completed")
