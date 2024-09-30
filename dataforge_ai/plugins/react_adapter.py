@@ -29,19 +29,20 @@ class ReactAdapter(PluginInterface):
                 name="Generate Pipeline",
                 func=self.pipeline_generator.execute,
                 description="Generates a dlt pipeline based on given configuration."
-            ),
-            Tool(
-                name="Convert to Airflow DAG",
-                func=self.dag_converter.execute,
-                description="Converts a dlt pipeline to an Airflow DAG for deployment."
             )
+            # ,
+            # Tool(
+            #     name="Convert to Airflow DAG",
+            #     func=self.dag_converter.execute,
+            #     description="Converts a dlt pipeline to an Airflow DAG for deployment."
+            # )
         ]
 
     def _create_prompt(self) -> PromptTemplate:
         base_prompt = self.prompt_generator.execute({
             "prompt_type": "react_agent",
             "parameters": {
-                "task_description": "Generate a data pipeline and convert it to an Airflow DAG",
+                "task_description": "Generate a dlt pipeline for the given API configuration",
                 "available_tools": [tool.name for tool in self.tools]
             }
         })
@@ -49,8 +50,7 @@ class ReactAdapter(PluginInterface):
         full_prompt = f"""
         {base_prompt}
 
-        Human: You are a data engineer tasked with generating a data pipeline and converting it to an Airflow DAG.
-        You have access to the following tools:
+        Human: You are a data engineer tasked with generating a data pipeline using the dlt library:
 
         {{tools}}
 
@@ -86,6 +86,9 @@ class ReactAdapter(PluginInterface):
         }
 
         try:
+            self.agent_executor = AgentExecutor.from_agent_and_tools(
+                agent=self.agent, tools=self.tools, verbose=True, handle_parsing_errors=True
+            )
             result = self.agent_executor.invoke(agent_input)
             self.log_execution("ReAct reasoning process completed")
 

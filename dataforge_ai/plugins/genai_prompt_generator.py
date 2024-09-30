@@ -2,7 +2,7 @@ import ast
 import json
 
 from dataforge_ai.core.plugin_interface import PluginInterface
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, List
 from langchain_openai import AzureChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -181,7 +181,8 @@ class GenAIPromptGenerator(PluginInterface):
             "formatted_params": formatted_params
         }
 
-    def _generate_dlt_pipeline_prompt(self, parameters: Dict[str, Any]) -> str:
+    def _generate_dlt_pipeline_prompt(self, parameters: Dict[str, Any]) -> dict[
+        str, str | list[str] | dict[str, str | Any]]:
         template = """
         Create a data pipeline using the dlt (data load tool) library that extracts data from a REST API 
         and loads it into a specified destination.
@@ -225,6 +226,7 @@ class GenAIPromptGenerator(PluginInterface):
            - Use pipeline.run() to execute the pipeline with the REST API source
            - Print or log the load info
         6. Include any necessary helper functions or additional configuration
+           See https://dlthub.com/docs/dlt-ecosystem/verified-sources/rest_api/basic for examples.
         7. Add appropriate type hints and docstrings
         8. Use best practices for dlt pipeline development, such as:
            - Proper error handling and logging
@@ -261,6 +263,6 @@ class GenAIPromptGenerator(PluginInterface):
 
         return {
             "template": template,
-            "input_variables": list(formatted_params.keys()),
+            "input_variables": input_variables,
             "formatted_params": formatted_params
         }

@@ -25,14 +25,19 @@ class PipelineGeneratorPlugin(PluginInterface):
         # Parse input_data if it's a string
         if isinstance(input_data, str):
             try:
-                # Remove any leading/trailing whitespace and code block markers
-                input_data = input_data.strip().lstrip('`').rstrip('`')
-                if input_data.startswith('json'):
-                    input_data = input_data[4:].lstrip()
-                input_data = json.loads(input_data)
+                # Remove markdown code block markers if present
+                input_data = input_data.strip()
+                if input_data.startswith("```json"):
+                    input_data = input_data[7:]  # Remove ```json
+                if input_data.endswith("```"):
+                    input_data = input_data[:-3]  # Remove trailing ```
+
+                # Parse the JSON
+                input_data = json.loads(input_data.strip())
             except json.JSONDecodeError as e:
                 self.log_execution(f"Error parsing JSON: {str(e)}", level="error")
                 raise ValueError(f"Invalid JSON string provided as input_data: {str(e)}")
+
 
         if not self.validate_input(input_data):
             raise ValueError("Invalid input data structure")
