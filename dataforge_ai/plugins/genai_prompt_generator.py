@@ -185,7 +185,7 @@ class GenAIPromptGenerator(PluginInterface):
         str, str | list[str] | dict[str, str | Any]]:
         template = """
         Create a data pipeline using the dlt (data load tool) library that extracts data from a REST API 
-        and loads it into a specified destination.
+        and loads it into Azure Blob Storage (using the 'filesystem' destination in dlt).
         
         Source details:
         - Base URL: {base_url}
@@ -196,8 +196,8 @@ class GenAIPromptGenerator(PluginInterface):
         - Headers: {headers}
         
         Destination details:
-        - Type: {destination_type}
-        - Details: {destination_details}
+        - Type: filesystem (for Azure Blob Storage)
+        - Details: Configure in .dlt/secrets.toml
         
         Pipeline name: {pipeline_name}
         Dataset name: {dataset_name}
@@ -205,29 +205,83 @@ class GenAIPromptGenerator(PluginInterface):
         Please include the following components in your dlt pipeline:
         
         1. Import necessary dlt modules and any additional required libraries.
-        2. Define the REST API source configuration:
-           - Use dlt.sources.rest_api.rest_api_source to create the source
-           - Configure the client with base_url, auth, headers, and default paginator
-           - Define resources for each endpoint, including:
-             - Name and endpoint path
-             - Any required parameters (including those for resource relationships)
-             - Write disposition (e.g., append, merge, replace)
-             - Primary key and incremental loading configuration if applicable
-           - Set up resource relationships if needed
-           - Configure any necessary data processing steps (filter, map, etc.)
-        3. Create the main pipeline function using the @dlt.source decorator:
+           Example:
+           ```python
+           import dlt
+           from dlt.sources.rest_api import rest_api_source, rest_api_resources
+           ```
+    
+        2. Define the REST API source configuration using RESTAPIConfig:
+            - Create the Source: Use `dlt.sources.rest_api.rest_api_source` and configure the client and resources.
+            - Client Setup:
+                - Include `base_url` and `auth` using built-in classes like `BearerTokenAuth`, `HTTPBasicAuth`, or `APIKeyAuth`.
+                    - Optional: Include additional `headers` or other client settings as needed.
+            - Resource Configuration: Define resources for each API endpoint:
+                - Set `name`, `endpoint` path, and required parameters.
+                - Configure `write_disposition` (`append`, `merge`, `replace`) and define `primary_key` if needed.
+                    - Optionally, set up `incremental` loading using `cursor_path`.
+            - Establish resource relationships using the `resolve` field to link parameters between parent and child resources.
+            - Pagination: Use built-in paginator classes like `PageNumberPaginator` or `OffsetPaginator` to handle paginated responses.
+                - Optional Data Processing: Use `processing_steps` to apply data transformations or filtering if needed.
+
+           Example:
+           ```python
+           @dlt.source
+           def pokemon_source(api_token: str = dlt.secrets.value):
+               return rest_api_source(
+                   name="pokemon_api",
+                   config=dict(
+                       client=dict(
+                           base_url="{base_url}",
+                           auth=dict(type="bearer", token=api_token),
+                           headers={headers},
+                       ),
+                       pagination={pagination},
+                       resources=[
+                           # Define your resources here
+                       ]
+                   )
+               )
+           ```
+    
+        3. Create the main pipeline function:
            - Include error handling and logging
-           - Yield from rest_api_resources with the configured source
+           
+           Example:
+           ```python
+           def load_github() -> None:
+            pipeline = dlt.pipeline(
+                pipeline_name="rest_api_github",
+                destination="duckdb",
+                dataset_name="rest_api_data",
+            )
+        
+            load_info = pipeline.run(github_source())
+            print(load_info)
+           ```
+    
         4. Set up the dlt pipeline:
            - Use dlt.pipeline() to create the pipeline instance
-           - Configure the destination and dataset name
+           - Configure the destination as 'filesystem' for Azure Blob Storage
+           - Set the dataset name
+           Note: Further configuration of the destination should be done in .dlt/secrets.toml
+    
         5. Implement the main execution block:
            - Create the pipeline instance
            - Use pipeline.run() to execute the pipeline with the REST API source
            - Print or log the load info
+           
+           Example:
+           ```python
+           if __name__ == "__main__":
+               load_pokemon_data()
+           ```
+    
         6. Include any necessary helper functions or additional configuration
-           See https://dlthub.com/docs/dlt-ecosystem/verified-sources/rest_api/basic for examples.
+           See https://dlthub.com/docs/dlt-ecosystem/verified-sources/rest_api/basic for more examples.
+    
         7. Add appropriate type hints and docstrings
+    
         8. Use best practices for dlt pipeline development, such as:
            - Proper error handling and logging
            - Using dlt.secrets for sensitive information
@@ -236,6 +290,21 @@ class GenAIPromptGenerator(PluginInterface):
         
         Generate a complete Python script that implements this dlt pipeline.
         Ensure the script follows dlt best practices and is ready for production use.
+        Use dlt.secrets for sensitive information and set up incremental loading where appropriate.
+    
+        Important: Remember to configure Azure Blob Storage credentials in .dlt/secrets.toml file.
+        Example configuration for .dlt/secrets.toml:
+        ```toml
+        [destination.filesystem]
+        bucket_url = "az://your-container-name"
+    
+        [destination.filesystem.credentials]
+        azure_storage_account_name = "your_account_name"
+        azure_storage_account_key = "your_account_key"
+        ```
+    
+        For more information on configuring the filesystem destination for Azure Blob Storage, 
+        refer to: https://dlthub.com/docs/dlt-ecosystem/destinations/filesystem
         """
 
         endpoints_str = "\n".join([f"  - {e['name']}: {e['path']} (Method: {e['method']})" for e in
