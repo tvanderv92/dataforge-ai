@@ -64,3 +64,85 @@ To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookie
 ---
 
 Repository initiated with [fpgmaas/cookiecutter-poetry](https://github.com/fpgmaas/cookiecutter-poetry).
+
+
+---
+
+```mermaid
+graph TD
+%% External Entities and Main Flow
+    A[Main Function] -->|Initialize Plugins| B[Microkernel]
+    B -->|Load ReactAdapter Plugin| C[ReactAdapter]
+    C -->|Call LLM| D[LLM_Azure_OpenAI]
+    D -->|Generate Prompt| E[PromptTemplate]
+    C -->|Use Prompt| F[PipelineGeneratorPlugin]
+    F -->|Generate Pipeline Code| G[Pipeline Code]
+    F -->|Optional: Convert to Airflow DAG| H[AirflowDAGConverterPlugin]
+    G -->|Save Generated Pipeline Code| I[Output: generated_pokemon_pipeline.py]
+
+%% Subgraph for the main components
+    subgraph SystemComponents
+        C
+        F
+        H
+    end
+
+%% Subgraph for external interactions
+    subgraph ExternalInteractions
+        D
+        E
+    end
+
+%% Highlighting the output path
+    classDef output fill:#f9f,stroke:#333,stroke-width:4px;
+    G,I,H:::output
+
+```
+
+
+```mermaid
+graph TB
+%% External Entities
+    User([User]) -->|Uses| System[DataForge AI System]
+    User -.->|Interacts via CLI/API| Microkernel
+    AzureOpenAI([Azure OpenAI]) -.->|Processes Prompts| ReactAdapter
+    AzureBlob([Azure Blob Storage]) -.->|Stores Pipeline Output| System
+
+%% Main Containers
+    subgraph System[DataForge AI System]
+        direction TB
+        subgraph CoreComponents
+            Microkernel
+            ReactAdapter
+            PipelineGeneratorPlugin
+            GenAIPromptGenerator
+            AirflowDAGConverterPlugin
+        end
+
+    %% Interactions between components
+        Microkernel -->|Registers| ReactAdapter
+        Microkernel -->|Registers| PipelineGeneratorPlugin
+        Microkernel -->|Registers| AirflowDAGConverterPlugin
+
+    %% ReactAdapter interactions
+        ReactAdapter -->|Generates Prompts| GenAIPromptGenerator
+        ReactAdapter -->|Executes Pipeline| PipelineGeneratorPlugin
+        ReactAdapter -.-|Optional| AirflowDAGConverterPlugin
+
+    %% Data Flow
+        GenAIPromptGenerator -->|Generates| PromptTemplate
+        PromptTemplate -->|Sends Prompt| AzureOpenAI
+        PipelineGeneratorPlugin -->|Creates| PipelineCode
+        PipelineCode -->|Saves Code| AzureBlob
+    end
+
+%% External Interactions
+    AzureOpenAI -.->|Processes Prompts| ReactAdapter
+    AzureBlob -.->|Stores Pipeline Output| System
+
+%% Output Handling
+    classDef output fill:#f96,stroke:#333,stroke-width:2px;
+    classDef external fill:#8fa,stroke:#333,stroke-width:2px;
+    class AzureOpenAI,AzureBlob,User,PromptTemplate,PipelineCode external
+
+```
