@@ -184,127 +184,130 @@ class GenAIPromptGenerator(PluginInterface):
     def _generate_dlt_pipeline_prompt(self, parameters: Dict[str, Any]) -> dict[
         str, str | list[str] | dict[str, str | Any]]:
         template = """
-        Create a data pipeline using the dlt (data load tool) library that extracts data from a REST API 
-        and loads it into Azure Blob Storage (using the 'filesystem' destination in dlt).
+        Create a data pipeline using the dlt (data load tool) library to extract data from a REST API and load it into Azure Blob Storage (using the 'filesystem' destination in dlt).
         
         Source details:
         - Base URL: {base_url}
-        - Endpoints:
-        {endpoints}
-        - Authentication: {auth}
-        - Pagination: {pagination}
-        - Headers: {headers}
+        - Endpoints:  
+          Define the relevant API endpoints, including any parameters.
+        - Authentication:  
+          Specify the type (`BearerTokenAuth`, `HTTPBasicAuth`, `APIKeyAuth`) and any necessary credentials.
+        - Pagination:  
+          Describe the pagination strategy (e.g., `PageNumberPaginator`, `OffsetPaginator`).
+        - Headers:  
+          Optional additional headers for API requests.
         
         Destination details:
-        - Type: filesystem (for Azure Blob Storage)
-        - Details: Configure in .dlt/secrets.toml
+        - Type: filesystem (for Azure Blob Storage).
+        - Configuration: Stored in `.dlt/secrets.toml`.
         
         Pipeline name: {pipeline_name}
         Dataset name: {dataset_name}
         
-        Please include the following components in your dlt pipeline:
+        Include the following components in your dlt pipeline:
         
-        1. Import necessary dlt modules and any additional required libraries.
-           Example:
+        1. **Import Necessary Modules**:  
+           Import dlt modules and any additional libraries.
+           
            ```python
            import dlt
-           from dlt.sources.rest_api import rest_api_source, rest_api_resources
+           from dlt.sources.rest_api import rest_api_source, BearTokenAuth
            ```
-    
-        2. Define the REST API source configuration using RESTAPIConfig:
-            - Create the Source: Use `dlt.sources.rest_api.rest_api_source` and configure the client and resources.
-            - Client Setup:
-                - Include `base_url` and `auth` using built-in classes like `BearerTokenAuth`, `HTTPBasicAuth`, or `APIKeyAuth`.
-                    - Optional: Include additional `headers` or other client settings as needed.
-            - Resource Configuration: Define resources for each API endpoint:
-                - Set `name`, `endpoint` path, and required parameters.
-                - Configure `write_disposition` (`append`, `merge`, `replace`) and define `primary_key` if needed.
-                    - Optionally, set up `incremental` loading using `cursor_path`.
-            - Establish resource relationships using the `resolve` field to link parameters between parent and child resources.
-            - Pagination: Use built-in paginator classes like `PageNumberPaginator` or `OffsetPaginator` to handle paginated responses.
-                - Optional Data Processing: Use `processing_steps` to apply data transformations or filtering if needed.
-
+        
+        2. **Define the REST API Source Configuration**:
+           - Create a source using `dlt.sources.rest_api.rest_api_source`.
+           - Configure the client with:
+             - `base_url`: Set the base URL for the API.
+             - `auth`: Use `BearerTokenAuth`, `HTTPBasicAuth`, or `APIKeyAuth` for authentication.
+             - `headers`: Optional additional headers.
+           - Define resources for each API endpoint:
+             - Specify `name`, `endpoint` path, and any required `params`.
+             - Configure `write_disposition` (e.g., `append`, `merge`) and define `primary_key` for each resource.
+             - Set up resource relationships using the `resolve` field to link parent-child parameters.
+           - Handle pagination using built-in paginator classes (e.g., `PageNumberPaginator`).
+           - Optional: Use `processing_steps` for data transformations or filtering.
+        
            Example:
            ```python
            @dlt.source
-           def pokemon_source(api_token: str = dlt.secrets.value):
+           def api_source(api_token: str = dlt.secrets.value):
                return rest_api_source(
-                   name="pokemon_api",
+                   name="example_api",
                    config=dict(
                        client=dict(
                            base_url="{base_url}",
-                           auth=dict(type="bearer", token=api_token),
+                           auth=BearerTokenAuth(api_token),
                            headers={headers},
                        ),
-                       pagination={pagination},
+                       paginator={pagination},
                        resources=[
-                           # Define your resources here
-                       ]
+                           dict(
+                               name="resource1",
+                               endpoint=dict(
+                                   path="resource1",
+                                   params={"limit": 100},
+                               ),
+                               primary_key="id",
+                               write_disposition="merge",
+                               incremental=dict(cursor_path="updated_at")
+                           ),
+                           dict(
+                               name="related_resource",
+                               endpoint=dict(
+                                   path="resource1/{id}/related",
+                                   params={"id": {"type": "resolve", "resource": "resource1", "field": "id"}},
+                               ),
+                               include_from_parent=["name"],
+                           ),
+                       ],
                    )
                )
            ```
-    
-        3. Create the main pipeline function:
-           - Include error handling and logging
-           
+        
+        3. **Create the Main Pipeline Function**:  
+           Use `dlt.pipeline()` to create the pipeline, configure the destination as `filesystem` for Azure Blob Storage, and specify the dataset name.
+        
            Example:
            ```python
-           def load_github() -> None:
-            pipeline = dlt.pipeline(
-                pipeline_name="rest_api_github",
-                destination="duckdb",
-                dataset_name="rest_api_data",
-            )
-        
-            load_info = pipeline.run(github_source())
-            print(load_info)
+           def load_data() -> None:
+               pipeline = dlt.pipeline(
+                   pipeline_name="{pipeline_name}",
+                   destination="filesystem",
+                   dataset_name="{dataset_name}",
+               )
+               load_info = pipeline.run(api_source())
+               print(load_info)
            ```
-    
-        4. Set up the dlt pipeline:
-           - Use dlt.pipeline() to create the pipeline instance
-           - Configure the destination as 'filesystem' for Azure Blob Storage
-           - Set the dataset name
-           Note: Further configuration of the destination should be done in .dlt/secrets.toml
-    
-        5. Implement the main execution block:
-           - Create the pipeline instance
-           - Use pipeline.run() to execute the pipeline with the REST API source
-           - Print or log the load info
-           
+        
+        4. **Main Execution Block**:  
+           Create a pipeline instance, run the pipeline with the defined source, and print the load results.
+           use function names that are semantic and relevant(load_data for instance is very ambiguous).
+        
            Example:
            ```python
            if __name__ == "__main__":
-               load_pokemon_data()
+               load_data()
            ```
-    
-        6. Include any necessary helper functions or additional configuration
-           See https://dlthub.com/docs/dlt-ecosystem/verified-sources/rest_api/basic for more examples.
-    
-        7. Add appropriate type hints and docstrings
-    
-        8. Use best practices for dlt pipeline development, such as:
-           - Proper error handling and logging
-           - Using dlt.secrets for sensitive information
-           - Configuring schema contracts if needed
-           - Setting up incremental loading where appropriate
         
-        Generate a complete Python script that implements this dlt pipeline.
-        Ensure the script follows dlt best practices and is ready for production use.
-        Use dlt.secrets for sensitive information and set up incremental loading where appropriate.
-    
-        Important: Remember to configure Azure Blob Storage credentials in .dlt/secrets.toml file.
-        Example configuration for .dlt/secrets.toml:
+        5. **Helper Functions and Configuration**:  
+           Include any helper functions or additional configurations as necessary.
+        
+        **Additional Considerations**:
+        - Store sensitive information (e.g., API tokens) in `.dlt/secrets.toml`.
+        - Configure schema contracts and incremental loading as needed.
+        - Use `response_actions` for handling specific response codes or modifying response content.
+        
+        Example configuration for `.dlt/secrets.toml`:
         ```toml
         [destination.filesystem]
         bucket_url = "az://your-container-name"
-    
+        
         [destination.filesystem.credentials]
         azure_storage_account_name = "your_account_name"
         azure_storage_account_key = "your_account_key"
         ```
-    
-        For more information on configuring the filesystem destination for Azure Blob Storage, 
-        refer to: https://dlthub.com/docs/dlt-ecosystem/destinations/filesystem
+        
+        For more information on configuring the filesystem destination, refer to the [dlt Filesystem Destination Documentation](https://dlthub.com/docs/dlt-ecosystem/destinations/filesystem).
         """
 
         endpoints_str = "\n".join([f"  - {e['name']}: {e['path']} (Method: {e['method']})" for e in
