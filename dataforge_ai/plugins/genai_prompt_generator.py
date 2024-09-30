@@ -172,8 +172,8 @@ class GenAIPromptGenerator(PluginInterface):
     def _generate_dlt_pipeline_prompt(self, parameters: Dict[str, Any]) -> str:
         template = """
         Create a data pipeline using the dlt (data load tool) library that extracts data from a REST API 
-        and loads it into Azure Data Lake Storage Gen2.
-    
+        and loads it into a specified destination.
+        
         Source details:
         - Base URL: {base_url}
         - Endpoints:
@@ -181,30 +181,47 @@ class GenAIPromptGenerator(PluginInterface):
         - Authentication: {auth}
         - Pagination: {pagination}
         - Headers: {headers}
-    
+        
         Destination details:
-        - Storage Account: {storage_account}
-        - File System: {file_system}
-        - Directory: {directory}
-        - Credentials: {credentials}
-    
+        - Type: {destination_type}
+        - Details: {destination_details}
+        
         Pipeline name: {pipeline_name}
-        Schedule: {schedule}
-    
+        Dataset name: {dataset_name}
+        
         Please include the following components in your dlt pipeline:
-    
-        1. Import necessary dlt modules
-        2. Define the pipeline using @dlt.pipeline decorator
-        3. Create functions to load data from each endpoint using dlt.source decorator
-        4. Implement pagination as specified
-        5. Handle authentication as required
-        6. Use dlt.run() to execute the pipeline
-        7. Configure the destination using dlt.destinations.adls2()
-        8. Implement proper error handling and logging
-        9. Use best practices for dlt pipeline development
-    
+        
+        1. Import necessary dlt modules and any additional required libraries.
+        2. Define the REST API source configuration:
+           - Use dlt.sources.rest_api.rest_api_source to create the source
+           - Configure the client with base_url, auth, headers, and default paginator
+           - Define resources for each endpoint, including:
+             - Name and endpoint path
+             - Any required parameters (including those for resource relationships)
+             - Write disposition (e.g., append, merge, replace)
+             - Primary key and incremental loading configuration if applicable
+           - Set up resource relationships if needed
+           - Configure any necessary data processing steps (filter, map, etc.)
+        3. Create the main pipeline function using the @dlt.source decorator:
+           - Include error handling and logging
+           - Yield from rest_api_resources with the configured source
+        4. Set up the dlt pipeline:
+           - Use dlt.pipeline() to create the pipeline instance
+           - Configure the destination and dataset name
+        5. Implement the main execution block:
+           - Create the pipeline instance
+           - Use pipeline.run() to execute the pipeline with the REST API source
+           - Print or log the load info
+        6. Include any necessary helper functions or additional configuration
+        7. Add appropriate type hints and docstrings
+        8. Use best practices for dlt pipeline development, such as:
+           - Proper error handling and logging
+           - Using dlt.secrets for sensitive information
+           - Configuring schema contracts if needed
+           - Setting up incremental loading where appropriate
+        
         Generate a complete Python script that implements this dlt pipeline.
-        Ensure the script can be scheduled using the provided cron expression.
+        Ensure the script follows dlt best practices and is ready for production use.
         """
 
         endpoints_str = "\n".join([f"  - {e['name']}: {e['path']} (Method: {e['method']})" for e in
