@@ -30,11 +30,11 @@ class GenAIPromptGenerator(PluginInterface):
         parameters = input_data.get('parameters', {})
 
         prompt_generators = {
-            'data_pipeline': self._generate_data_pipeline_prompt,
+            'data_pipeline': self._generate_dlt_pipeline_prompt,
             'code_explanation': self._generate_code_explanation_prompt,
             'react_agent': self._generate_react_agent_prompt,
             'airflow_dag': self._generate_airflow_dag_prompt,
-            'dlt_pipeline': self._generate_dlt_pipeline_prompt
+            # 'dlt_pipeline': self._generate_dlt_pipeline_prompt
         }
 
         if prompt_type not in prompt_generators:
@@ -54,8 +54,12 @@ class GenAIPromptGenerator(PluginInterface):
             "type": "object",
             "properties": {
                 "prompt_type": {"type": "string",
-                                "enum": ["data_pipeline", "code_explanation", "react_agent", "airflow_dag",
-                                         "dlt_pipeline"]},
+                                "enum": ["data_pipeline"
+                                    , "code_explanation"
+                                    , "react_agent"
+                                    , "airflow_dag"
+                                    , "dlt_pipeline"]
+                                },
                 "parameters": {"type": "object"}
             },
             "required": ["prompt_type", "parameters"]
@@ -151,7 +155,7 @@ class GenAIPromptGenerator(PluginInterface):
             tool_names=", ".join(parameters['available_tools'])
         )
 
-    def _generate_airflow_dag_prompt(self, parameters: Dict[str, Any]) -> str:
+    def _generate_airflow_dag_prompt(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         template = """
         Convert the following dlt pipeline code to an Apache Airflow DAG:
     
@@ -167,7 +171,15 @@ class GenAIPromptGenerator(PluginInterface):
     
         Generate the Airflow DAG code that implements this pipeline.
         """
-        return template
+
+        input_variables = ["pipeline_code"]
+        formatted_params = {"pipeline_code": parameters.get("pipeline_code", "")}
+
+        return {
+            "template": template,
+            "input_variables": input_variables,
+            "formatted_params": formatted_params
+        }
 
     def _generate_dlt_pipeline_prompt(self, parameters: Dict[str, Any]) -> str:
         template = """
@@ -227,22 +239,28 @@ class GenAIPromptGenerator(PluginInterface):
         endpoints_str = "\n".join([f"  - {e['name']}: {e['path']} (Method: {e['method']})" for e in
                                    parameters['source']['config']['endpoints']])
 
-        chain = self._create_chain(template, [
+        input_variables = [
             "base_url", "endpoints", "auth", "pagination", "headers",
-            "storage_account", "file_system", "directory", "credentials",
-            "pipeline_name", "schedule"
-        ])
+            "destination_type", "destination_details",
+            "pipeline_name", "dataset_name",
+            "schedule"
+        ]
 
-        return chain.invoke({
+        formatted_params = {
             "base_url": parameters['source']['config']['base_url'],
             "endpoints": endpoints_str,
             "auth": str(parameters['source']['config']['auth']),
             "pagination": str(parameters['source']['config']['pagination']),
             "headers": str(parameters['source']['config']['headers']),
-            "storage_account": parameters['destination']['config']['account_name'],
-            "file_system": parameters['destination']['config']['container_name'],
-            "directory": parameters['destination']['config']['folder_path'],
-            "credentials": f"account_key={parameters['destination']['config']['account_key']}",
+            "destination_type": parameters['destination']['type'],
+            "destination_details": str(parameters['destination']['config']),
             "pipeline_name": parameters['pipeline_name'],
+            "dataset_name": parameters['dataset_name'],
             "schedule": parameters['schedule']
-        })
+        }
+
+        return {
+            "template": template,
+            "input_variables": list(formatted_params.keys()),
+            "formatted_params": formatted_params
+        }

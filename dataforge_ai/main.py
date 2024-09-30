@@ -83,6 +83,7 @@ def main():
                 "folder_path": "raw_data"
             }
         },
+        "dataset_name": "pokemon_data",
         "pipeline_name": "pokemon_api_to_azure_blob",
         "schedule": "0 0 * * *"  # Daily at midnight (cron format)
     }
@@ -103,21 +104,21 @@ def main():
         pipeline_code = react_result.get("pipeline_code", "No pipeline code generated")
 
     # Extract Airflow DAG
-    airflow_dag = extract_code_block(full_output, "2. **Convert to Airflow DAG**:")
-    if not airflow_dag or airflow_dag == "No code found":
-        airflow_dag = react_result.get("airflow_dag", "No Airflow DAG generated")
+    # airflow_dag = extract_code_block(full_output, "2. **Convert to Airflow DAG**:")
+    # if not airflow_dag or airflow_dag == "No code found":
+    #     airflow_dag = react_result.get("airflow_dag", "No Airflow DAG generated")
 
     print("Generated dlt Pipeline Code:")
     print(pipeline_code)
-    print("\nGenerated Airflow DAG:")
-    print(airflow_dag)
+    # print("\nGenerated Airflow DAG:")
+    # print(airflow_dag)
 
     # Save the generated code to files
     with open("generated_pokemon_pipeline.py", "w") as f:
         f.write(pipeline_code)
 
-    with open("generated_pokemon_dag.py", "w") as f:
-        f.write(airflow_dag)
+    # with open("generated_pokemon_dag.py", "w") as f:
+    #     f.write(airflow_dag)
 
 
 def extract_code_block(text, marker):

@@ -32,17 +32,18 @@ class AirflowDAGConverterPlugin(PluginInterface):
         if not self.validate_input(input_data):
             raise ValueError("Invalid input data")
 
-        prompt = self.prompt_generator.execute({
+        prompt_data = self.prompt_generator.execute({
             "prompt_type": "airflow_dag",
             "parameters": input_data
         })
 
-        # Escape curly braces in the pipeline code
-        escaped_pipeline_code = input_data["pipeline_code"].replace("{", "{{").replace("}", "}}")
-
-        dag_template = PromptTemplate(template=prompt, input_variables=["pipeline_code"])
+        # Use the template and input_variables from the returned dictionary
+        dag_template = PromptTemplate(
+            template=prompt_data["template"],
+            input_variables=prompt_data["input_variables"]
+        )
         dag_chain = dag_template | self.llm | StrOutputParser()
-        dag_code = dag_chain.invoke({"pipeline_code": escaped_pipeline_code})
+        dag_code = dag_chain.invoke(prompt_data["formatted_params"])
 
         self.log_execution("Airflow DAG conversion completed")
         return dag_code

@@ -97,7 +97,7 @@ class ReactAdapter(PluginInterface):
             return {
                 "output": output,
                 "pipeline_code": code,
-                "airflow_dag": code  # Since the pipeline is integrated into the DAG
+                # "airflow_dag": code  # Since the pipeline is integrated into the DAG
             }
         except Exception as e:
             self.log_execution(f"Error in ReAct reasoning process: {str(e)}", level="error")
@@ -156,9 +156,11 @@ class ReactAdapter(PluginInterface):
             "type": "object",
             "properties": {
                 "pipeline_code": {"type": "string"},
-                "airflow_dag": {"type": "string"}
+                # "airflow_dag": {"type": "string"}
             },
-            "required": ["pipeline_code", "airflow_dag"]
+            "required": ["pipeline_code"
+                         # , "airflow_dag"
+                         ]
         }
 
 
