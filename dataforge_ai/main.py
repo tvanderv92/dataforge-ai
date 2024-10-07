@@ -43,6 +43,7 @@ def main():
     # Define pipeline configuration for Pokemon API
     pokemon_pipeline_config = {
         "source": {
+            "name": "pokemon_api_to_datalake",
             "type": "rest_api",
             "config": {
                 "base_url": "https://pokeapi.co/api/v2",
@@ -67,7 +68,7 @@ def main():
                 },
                 "pagination": {
                     "type": "json_link",
-                    "next_url_path": "next"
+                    "next_url_path": "next",
                 },
                 "headers": {
                     "Accept": "application/json"
@@ -75,7 +76,7 @@ def main():
             }
         },
         "destination": {
-            "type": "azure_blob",
+            "type": "filesystem",
             "config": {
                 "account_name": os.getenv("AZURE_STORAGE_ACCOUNT_NAME"),
                 "account_key": os.getenv("AZURE_STORAGE_ACCOUNT_KEY"),

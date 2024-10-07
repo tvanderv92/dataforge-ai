@@ -1,13 +1,17 @@
 import json
+import re
+from typing import Dict, Any, Union
+
 
 from dataforge_ai.core.plugin_interface import PluginInterface
-from typing import Dict, Any, Union
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnableSerializable
 
 
 class PipelineGeneratorPlugin(PluginInterface):
+    VALID_SOURCE_TYPES = ["rest_api", "sql_database", "filesystem"]
+    VALID_DESTINATION_TYPES = ["filesystem", "bigquery", "redshift", "postgres", "mysql", "duckdb"]
+
     def __init__(self, llm, prompt_generator):
         super().__init__()
         self.llm = llm
@@ -21,40 +25,75 @@ class PipelineGeneratorPlugin(PluginInterface):
         :return: Generated pipeline code as a string.
         """
         self.log_execution("Starting pipeline generation")
-        self.log_execution(f"Received input data: {input_data}", level="debug")
-
-        try:
-            # Remove markdown code block markers if present
-            input_data = input_data.strip()
-
-            # If the string starts with some introductory text, remove it until the first '{'
-            if "```json" in input_data:
-                input_data = input_data.split("```json")[-1]  # Get everything after ```json
-            if "```" in input_data:
-                input_data = input_data.split("```")[0]  # Get everything before the closing ```
-
-            # Remove any leading text before the first '{'
-            json_start_index = input_data.find("{")
-            if json_start_index != -1:
-                input_data = input_data[json_start_index:]  # Only keep the JSON part
-
-            # Parse the cleaned JSON string
-            input_data = json.loads(input_data)
-        except json.JSONDecodeError as e:
-            self.log_execution(f"Error parsing JSON: {str(e)}", level="error")
-            raise ValueError(f"Invalid JSON string provided as input_data: {str(e)}")
-
+        input_data = self._parse_input(input_data)
 
         if not self.validate_input(input_data):
             raise ValueError("Invalid input data structure")
 
+        return self._generate_pipeline(input_data)
+
+    def validate_input(self, input_data: Dict[str, Any]) -> bool:
+        """
+        Validate the input data for the plugin.
+
+        :param input_data: A dictionary containing the input data for the plugin.
+        :return: True if the input is valid, False otherwise.
+        """
+        self.log_execution(f"Validating input data: {json.dumps(input_data, indent=2)}", level="debug")
+        required_keys = ['source', 'destination', 'pipeline_name', 'schedule']
+
+        if not all(key in input_data for key in required_keys):
+            missing_keys = [key for key in required_keys if key not in input_data]
+            self.log_execution(f"Input validation failed: missing required keys {missing_keys}", level="error")
+            return False
+
+        return self._validate_source_config(input_data['source']) and self._validate_destination_config(
+            input_data['destination'])
+
+    def _parse_input(self, input_data: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Parse and validate input data from a JSON string or dictionary.
+
+        :param input_data: Input data in JSON string or dictionary format.
+        :return: Parsed input data as a dictionary.
+        """
+        self.log_execution(f"Received input data: {input_data}", level="debug")
+
+        if isinstance(input_data, str):
+            # Extract content between triple backticks
+            pattern = r"```json\s*([\s\S]*?)\s*```"
+            match = re.search(pattern, input_data)
+
+            if match:
+                cleaned_input_data = match.group(1).strip()
+                self.log_execution(f"Extracted JSON content: {repr(cleaned_input_data)}", level="debug")
+
+                try:
+                    # Attempt to parse the extracted JSON string
+                    return json.loads(cleaned_input_data)
+                except json.JSONDecodeError as e:
+                    self.log_execution(f"Error parsing JSON: {str(e)}", level="error")
+                    self.log_execution(f"Problematic input: {repr(cleaned_input_data)}", level="error")
+                    raise ValueError(f"Invalid JSON string provided as input_data: {str(e)}")
+            else:
+                self.log_execution("No JSON content found between ```json ... ``` markers", level="error")
+                raise ValueError("No valid JSON content found in the input string")
+
+        return input_data
+
+
+    def _generate_pipeline(self, input_data: Dict[str, Any]) -> str:
+        """
+        Generate pipeline code using LLM based on the input configuration.
+
+        :param input_data: Parsed input configuration dictionary.
+        :return: Generated pipeline code as a string.
+        """
         try:
             prompt_data = self.prompt_generator.execute({
                 "prompt_type": "data_pipeline",
                 "parameters": input_data
             })
-
-
 
             pipeline_template = PromptTemplate(
                 template=prompt_data["template"],
@@ -69,28 +108,6 @@ class PipelineGeneratorPlugin(PluginInterface):
             self.log_execution(f"Error during pipeline generation: {str(e)}", level="error")
             raise
 
-    def validate_input(self, input_data: Dict[str, Any]) -> bool:
-        """
-        Validate the input data for the plugin.
-
-        :param input_data: A dictionary containing the input data for the plugin.
-        :return: True if the input is valid, False otherwise.
-        """
-        required_keys = ['source', 'destination', 'pipeline_name', 'schedule']
-        if not all(key in input_data for key in required_keys):
-            self.log_execution("Input validation failed: missing required keys", level="error")
-            return False
-
-        # Validate source configuration
-        if not self._validate_source_config(input_data['source']):
-            return False
-
-        # Validate destination configuration
-        if not self._validate_destination_config(input_data['destination']):
-            return False
-
-        return True
-
     def _validate_source_config(self, source_config: Dict[str, Any]) -> bool:
         """
         Validate the source configuration.
@@ -98,13 +115,16 @@ class PipelineGeneratorPlugin(PluginInterface):
         :param source_config: The source configuration dictionary.
         :return: True if valid, False otherwise.
         """
-        if source_config.get('type') != 'rest_api':
-            self.log_execution("Invalid source type", level="error")
+        self.log_execution(f"Validating source config: {json.dumps(source_config, indent=2)}", level="debug")
+
+        if source_config.get('type') not in self.VALID_SOURCE_TYPES:
+            self.log_execution(
+                f"Invalid source type: {source_config.get('type')}. Valid types are: {self.VALID_SOURCE_TYPES}",
+                level="error")
             return False
 
-        required_source_keys = ['config']
-        if not all(key in source_config for key in required_source_keys):
-            self.log_execution("Missing required source configuration keys", level="error")
+        if 'config' not in source_config:
+            self.log_execution(f"Missing required 'config' key in source configuration.", level="error")
             return False
 
         return True
@@ -116,13 +136,16 @@ class PipelineGeneratorPlugin(PluginInterface):
         :param destination_config: The destination configuration dictionary.
         :return: True if valid, False otherwise.
         """
-        if destination_config.get('type') != 'azure_blob':
-            self.log_execution("Invalid destination type", level="error")
+        self.log_execution(f"Validating destination config: {json.dumps(destination_config, indent=2)}", level="debug")
+
+        if destination_config.get('type') not in self.VALID_DESTINATION_TYPES:
+            self.log_execution(
+                f"Invalid destination type: {destination_config.get('type')}. Valid types are: {self.VALID_DESTINATION_TYPES}",
+                level="error")
             return False
 
-        required_dest_keys = ['config']
-        if not all(key in destination_config for key in required_dest_keys):
-            self.log_execution("Missing required destination configuration keys", level="error")
+        if 'config' not in destination_config:
+            self.log_execution(f"Missing required 'config' key in destination configuration.", level="error")
             return False
 
         return True
@@ -139,60 +162,17 @@ class PipelineGeneratorPlugin(PluginInterface):
                 "source": {
                     "type": "object",
                     "properties": {
-                        "type": {"type": "string", "enum": ["rest_api"]},
-                        "config": {
-                            "type": "object",
-                            "properties": {
-                                "base_url": {"type": "string"},
-                                "endpoints": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": {"type": "string"},
-                                            "path": {"type": "string"},
-                                            "method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE"]}
-                                        },
-                                        "required": ["name", "path", "method"]
-                                    }
-                                },
-                                "auth": {
-                                    "type": "object",
-                                    "properties": {
-                                        "type": {"type": "string", "enum": ["none", "bearer_token", "api_key"]}
-                                    },
-                                    "required": ["type"]
-                                },
-                                "pagination": {
-                                    "type": "object",
-                                    "properties": {
-                                        "type": {"type": "string", "enum": ["offset", "page", "cursor"]},
-                                        "limit_param": {"type": "string"},
-                                        "offset_param": {"type": "string"},
-                                        "total_count_path": {"type": "string"}
-                                    },
-                                    "required": ["type"]
-                                }
-                            },
-                            "required": ["base_url", "endpoints", "auth", "pagination"]
-                        }
+                        "type": {"type": "string", "enum": self.VALID_SOURCE_TYPES},
+                        "config": {"type": "object", "required": ["base_url", "endpoints", "auth", "pagination"]}
                     },
                     "required": ["type", "config"]
                 },
                 "destination": {
                     "type": "object",
                     "properties": {
-                        "type": {"type": "string", "enum": ["azure_blob"]},
-                        "config": {
-                            "type": "object",
-                            "properties": {
-                                "account_name": {"type": "string"},
-                                "account_key": {"type": "string"},
-                                "container_name": {"type": "string"},
-                                "folder_path": {"type": "string"}
-                            },
-                            "required": ["account_name", "account_key", "container_name", "folder_path"]
-                        }
+                        "type": {"type": "string", "enum": self.VALID_DESTINATION_TYPES},
+                        "config": {"type": "object",
+                                   "required": ["account_name", "account_key", "container_name", "folder_path"]}
                     },
                     "required": ["type", "config"]
                 },

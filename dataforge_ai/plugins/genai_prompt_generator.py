@@ -292,7 +292,7 @@ class GenAIPromptGenerator(PluginInterface):
            Use `dlt.pipeline()` to create the pipeline, configure the destination, and specify the dataset name.
 
            ```python
-           def main() -> None:
+           def load_{pipeline_name}() -> None:
                pipeline = dlt.pipeline(
                    pipeline_name="{pipeline_name}",
                    destination="{destination_type}",
@@ -305,7 +305,7 @@ class GenAIPromptGenerator(PluginInterface):
         4. **Main Execution Block**:
            ```python
            if __name__ == "__main__":
-               main()
+               load_{pipeline_name}()
            ```
 
         5. **Helper Functions and Configuration**:
