@@ -30,7 +30,7 @@ class AirflowDAGConverterPlugin(PluginInterface):
         pipeline_name = input_data.get('pipeline_name', self._extract_pipeline_name(pipeline_code))
         schedule = input_data.get('schedule', None)
 
-        dag_code = self._generate_airflow_dag(pipeline_name, schedule, pipeline_code)
+        dag_code = self._generate_airflow_dag(pipeline_name, schedule)
         file_path = self._write_dag_to_file(dag_code, pipeline_name)
 
         self.log_execution("Airflow DAG conversion completed and written to file")
@@ -82,7 +82,7 @@ class AirflowDAGConverterPlugin(PluginInterface):
         match = re.search(r'pipeline_name\s*=\s*["]([\w_]+)["]', pipeline_code)
         return match.group(1) if match else "dlt_pipeline"
 
-    def _generate_airflow_dag(self, pipeline_name: str, schedule: str, pipeline_code: str) -> str:
+    def _generate_airflow_dag(self, pipeline_name: str, schedule: str) -> str:
         dag_code = f"""
 from airflow.decorators import dag
 from airflow.operators.python import PythonOperator
@@ -120,19 +120,14 @@ def load_{pipeline_name}_data():
         retry_policy=Retrying(stop=stop_after_attempt(3), reraise=True),
     )
 
-    def run_pipeline(**kwargs):
-        # Execute the DLT pipeline code
-        exec({repr(pipeline_code)})
-
-    run_pipeline_task = PythonOperator(
-        task_id='run_{pipeline_name}_pipeline',
-        python_callable=run_pipeline,
-        provide_context=True,
-        dag=load_{pipeline_name}_data,
+    # The pipeline code should be added here to integrate with Airflow tasks
+    tasks.add_run(
+        pipeline_name="{pipeline_name}",
+        decompose="serialize",
+        trigger_rule="all_done",
+        retries=0,
+        provide_context=True
     )
-
-    # Add the task to the tasks group
-    tasks.add_task(run_pipeline_task)
 
 load_{pipeline_name}_data()
 """
