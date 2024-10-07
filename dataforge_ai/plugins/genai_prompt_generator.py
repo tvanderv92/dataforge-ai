@@ -101,7 +101,7 @@ class GenAIPromptGenerator(PluginInterface):
             "requirements": f"Pipeline name: {parameters['pipeline_name']}, Schedule: {parameters['schedule']}"
         }
 
-            # Ensure that only the defined keys are in formatted_params
+        # Ensure that only the defined keys are in formatted_params
         defined_keys = {"source_type", "destination_type", "source_details", "destination_details", "requirements"}
         for key in formatted_params.keys():
             if key not in defined_keys:
@@ -195,131 +195,137 @@ class GenAIPromptGenerator(PluginInterface):
     def _generate_dlt_pipeline_prompt(self, parameters: Dict[str, Any]) -> dict[
         str, str | list[str] | dict[str, str | Any]]:
         template = """
-        Note: This template has been adjusted to prevent unintentional extraction of `id`,`limit` and `type` as template variables. Double curly braces `{{ }}` are used around these placeholders to treat them as literal strings.
+        Note: This template has been adjusted to prevent unintentional extraction of `id`, `limit`, and `type` as template variables. Double curly braces `{{ }}` are used around these placeholders to treat them as literal strings.
 
         Create a data pipeline using the dlt (data load tool) library to extract data from a REST API and load it into Azure Blob Storage (using the 'filesystem' destination in dlt).
-        
+
         Source details:
         - Base URL: {base_url}
-        - Endpoints:  
-          Define the relevant API endpoints, including any parameters.
-        - Authentication:  
-          Specify the type (`BearerTokenAuth`, `HTTPBasicAuth`, `APIKeyAuth`) and any necessary credentials.
-        - Pagination:  
-          Describe the pagination strategy (e.g., `PageNumberPaginator`, `OffsetPaginator`).
-        - Headers:  
-          Optional additional headers for API requests.
-        
+        - Endpoints:
+        {endpoints}
+        - Authentication:
+        {auth}
+        - Pagination:
+        {pagination}
+        - Headers:
+        {headers}
+
         Destination details:
-        - Type: filesystem (for Azure Blob Storage).
-        - Configuration: Stored in `.dlt/secrets.toml`.
-        
+        - Type: {destination_type}
+        - Configuration: {destination_details}
+
         Pipeline name: {pipeline_name}
         Dataset name: {dataset_name}
-        
+        Schedule: {schedule}
+        Source name: {source_name}
+
         Include the following components in your dlt pipeline:
-        
-        1. **Import Necessary Modules**:  
+
+        1. **Import Necessary Modules**:
            Import dlt modules and any additional libraries.
-           
+
            ```python
            import dlt
-           from dlt.sources.rest_api import rest_api_source, BearTokenAuth
+           from dlt.sources.rest_api import rest_api_source, BearerTokenAuth, typing
            ```
-        
+
         2. **Define the REST API Source Configuration**:
            - Create a source using `dlt.sources.rest_api.rest_api_source`.
            - Configure the client with:
              - `base_url`: Set the base URL for the API.
              - `auth`: Use `BearerTokenAuth`, `HTTPBasicAuth`, or `APIKeyAuth` for authentication.
              - `headers`: Optional additional headers.
+             - `paginator`: Configure the paginator based on the API's pagination mechanism.
            - Define resources for each API endpoint:
              - Specify `name`, `endpoint` path, and any required `params`.
              - Configure `write_disposition` (e.g., `append`, `merge`) and define `primary_key` for each resource.
              - Set up resource relationships using the `resolve` field to link parent-child parameters.
            - Handle pagination using built-in paginator classes (e.g., `PageNumberPaginator`).
            - Optional: Use `processing_steps` for data transformations or filtering.
-        
-           Example:
+
+           **Example:**
            ```python
            @dlt.source
-           def api_source(api_token: str = dlt.secrets.value):
-               return rest_api_source(
-                   name="example_api",
-                   config=dict(
-                       client=dict(
-                           base_url="{base_url}",
-                           auth=BearerTokenAuth(api_token),
-                           headers={headers},
-                       ),
-                       paginator={pagination},
-                       resources=[
-                           dict(
-                               name="resource1",
-                               endpoint=dict(
-                                   path="resource1",
-                                   params={{"limit": 100}},
-                               ),
-                               primary_key="id",
-                               write_disposition="merge",
-                               incremental=dict(cursor_path="updated_at")
-                           ),
-                           dict(
-                               name="related_resource",
-                               endpoint=dict(
-                                   path="resource1/{{id}}/related"
-                                   params={{"id": {{"type": "resolve", "resource": "resource1", "field": "id"}}}},
-                               ),
-                               include_from_parent=["name"],
-                           ),
-                       ],
-                   )
-               )
+           def {source_name}(api_token: str = dlt.secrets.value):
+                return rest_api_source(
+                    name="{pipeline_name}",
+                    config={{
+                        "client": {{
+                            "base_url": "{base_url}",
+                            "auth": BearerTokenAuth(api_token),
+                            "headers": {headers},
+                            "paginator": {pagination},
+                        }},
+                        "resources": [
+                            {{
+                                "name": "resource1",
+                                "endpoint": {{
+                                    "path": "resource1",
+                                    "params": {{"limit": 100}},
+                                }},
+                                "primary_key": "id",
+                                "write_disposition": "merge",
+                                "incremental": {{
+                                    "cursor_path": "updated_at"
+                                }}
+                            }},
+                            {{
+                                "name": "related_resource",
+                                "endpoint": {{
+                                    "path": "resource1/{{{{id}}}}/related",
+                                    "params": {{
+                                        "id": {{
+                                            "type": "resolve",
+                                            "resource": "resource1",
+                                            "field": "id"
+                                        }}
+                                    }},
+                                }},
+                                "include_from_parent": ["name"],
+                            }},
+                        ],
+                    }}
+                )
            ```
-        
-        3. **Create the Main Pipeline Function**:  
-           Use `dlt.pipeline()` to create the pipeline, configure the destination as `filesystem` for Azure Blob Storage, and specify the dataset name.
-        
-           Example:
+
+        3. **Create the Main Pipeline Function**:
+           Use `dlt.pipeline()` to create the pipeline, configure the destination, and specify the dataset name.
+
            ```python
-           def load_data() -> None:
+           def main() -> None:
                pipeline = dlt.pipeline(
                    pipeline_name="{pipeline_name}",
-                   destination="filesystem",
+                   destination="{destination_type}",
                    dataset_name="{dataset_name}",
                )
-               load_info = pipeline.run(api_source())
+               load_info = pipeline.run({source_name}())
                print(load_info)
            ```
-        
-        4. **Main Execution Block**:  
-           Create a pipeline instance, run the pipeline with the defined source, and print the load results.
-           use function names that are semantic and relevant(load_data for instance is very ambiguous).
-        
-           Example:
+
+        4. **Main Execution Block**:
            ```python
            if __name__ == "__main__":
-               load_data()
+               main()
            ```
-        
-        5. **Helper Functions and Configuration**:  
+
+        5. **Helper Functions and Configuration**:
            Include any helper functions or additional configurations as necessary.
-        
+
         **Additional Considerations**:
         - Store sensitive information (e.g., API tokens) in `.dlt/secrets.toml`.
         - Configure schema contracts and incremental loading as needed.
         - Use `response_actions` for handling specific response codes or modifying response content.
-        
-        Example configuration for `.dlt/secrets.toml`:
+
+        **Example configuration for `.dlt/secrets.toml`:**
         ```toml
         [destination.filesystem]
         bucket_url = "az://your-container-name"
-        
+
         [destination.filesystem.credentials]
         azure_storage_account_name = "your_account_name"
         azure_storage_account_key = "your_account_key"
         ```
-        
+
         For more information on configuring the filesystem destination, refer to the [dlt Filesystem Destination Documentation](https://dlthub.com/docs/dlt-ecosystem/destinations/filesystem).
         """
 
@@ -333,24 +339,96 @@ class GenAIPromptGenerator(PluginInterface):
             "schedule"
         ]
 
+        paginator_params = parameters['source']['config'].get('pagination', {})
+        paginator_config = DLTConfigGenerator.generate_paginator_config(paginator_params)
+
+        client_config = {
+            "base_url": parameters['source']['config']['base_url'],
+            "headers": str(parameters['source']['config'].get('headers', 'None')),
+            "paginator": paginator_config
+        }
+
+        auth_params = parameters['source']['config']
+        client_config = DLTConfigGenerator.add_authentication_config(client_config, auth_params)
+
         formatted_params = {
             "base_url": parameters['source']['config']['base_url'],
             "endpoints": endpoints_str,
-            "auth": str(parameters['source']['config']['auth']),
-            "pagination": str(parameters['source']['config']['pagination']),
-            "headers": str(parameters['source']['config']['headers']),
+            "auth": (
+                None if parameters['source']['config'].get('auth', {}).get('type', 'none') == 'none'
+                else parameters['source']['config'].get('auth')
+            ),
+            "pagination": paginator_config,
+            "headers": str(parameters['source']['config'].get('headers', {})),
+            "client": client_config,
             "destination_type": parameters['destination']['type'],
             "destination_details": str(parameters['destination']['config']),
             "pipeline_name": parameters['pipeline_name'],
             "dataset_name": parameters['dataset_name'],
-            "schedule": parameters['schedule']
+            "schedule": parameters.get('schedule', 'Not specified'),
+            "source_name": parameters['source'].get('name', 'api_source')
         }
 
-        print("Generated Template:", template)  # Log the template to inspect variables
+        print("Formatted Params:", formatted_params)
 
+        print("Generated Template:", template)  # Log the template to inspect variables
 
         return {
             "template": template,
             "input_variables": input_variables,
             "formatted_params": formatted_params
         }
+
+
+class DLTConfigGenerator:
+    @staticmethod
+    def generate_paginator_config(paginator_params):
+        if isinstance(paginator_params, str):
+            # Return the paginator as a dictionary if it's a simple string type
+            return {"type": paginator_params}
+
+        if isinstance(paginator_params, dict):
+            paginator_type = paginator_params.get('type', 'offset')
+            config_items = {
+                "type": paginator_type
+            }
+
+            # Add pagination-specific configurations based on the paginator type
+            config_map = {
+                'offset': [
+                    ('limit_param', 'limit'),
+                    ('offset_param', 'offset'),
+                    ('limit', 'limit')
+                ],
+                'page_number': [
+                    ('page_param', 'page'),
+                    ('total_path', 'total_pages')
+                ],
+                'link': [
+                    ('next_url_path', 'next_page_url')
+                ],
+                'json_link': [
+                    ('next_url_path ', 'next_page_url')
+                ]
+
+            }
+
+            # Add the pagination parameters to the config_items dictionary
+            for param, default in config_map.get(paginator_type, []):
+                value = paginator_params.get(param, default)
+                config_items[param] = value
+
+            return config_items  # Return the paginator configuration as a dictionary
+
+        # If no valid paginator is provided, return an empty dictionary
+        return {}
+
+    @staticmethod
+    def add_authentication_config(client_config, auth_params):
+        auth_type = auth_params.get('auth', {}).get('type', 'none')
+        if auth_type != 'none':
+            client_config['auth'] = {
+                "type": auth_type,
+                "token": "api_token"  # Replace with actual value or method to retrieve the token
+            }
+        return client_config

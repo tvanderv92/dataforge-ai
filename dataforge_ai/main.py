@@ -66,10 +66,8 @@ def main():
                     "type": "none"
                 },
                 "pagination": {
-                    "type": "offset",
-                    "limit_param": "limit",
-                    "offset_param": "offset",
-                    "total_count_path": "count"
+                    "type": "json_link",
+                    "next_url_path": "next"
                 },
                 "headers": {
                     "Accept": "application/json"
