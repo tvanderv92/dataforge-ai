@@ -85,54 +85,43 @@ class AirflowDAGConverterPlugin(PluginInterface):
 
     def _generate_airflow_dag(self, pipeline_code: str, pipeline_name: str, schedule: str, dataset_name: str) -> str:
         dag_code = f"""
-        from airflow.decorators import dag
-        from dlt.common import pendulum
-        from dlt.helpers.airflow_helper import PipelineTasksGroup
-        from tenacity import Retrying, stop_after_attempt
+    from datetime import timedelta
+    from airflow.decorators import dag
+    
+    import dlt
+    from dlt.common import pendulum
+    from dlt.helpers.airflow_helper import PipelineTasksGroup
+    
+    # Default task arguments
+    default_task_args = {{
+        'owner': 'airflow',
+        'depends_on_past': False,
+        'email': 'test@test.com',
+        'email_on_failure': False,
+        'email_on_retry': False,
+        'retries': 0,
+        'execution_timeout': timedelta(hours=20),
+    }}
+    
+    @dag(
+        schedule_interval='{schedule}',
+        start_date=pendulum.datetime(2023, 7, 1),
+        catchup=False,
+        max_active_runs=1,
+        default_args=default_task_args
+    )
+    def load_{pipeline_name}_data():
+        tasks = PipelineTasksGroup("{pipeline_name}", use_data_folder=False, wipe_local_data=True)
+    
+        {pipeline_code}
+    
+        pipeline = dlt.pipeline(pipeline_name='{pipeline_name}',
+                                dataset_name='{dataset_name}',
+                                destination='filesystem',
+                                full_refresh=False)
         
-        default_args = {{
-            'owner': 'airflow',
-            'depends_on_past': False,
-            'email': ['airflow@example.com'],
-            'email_on_failure': False,
-            'email_on_retry': False,
-            'retries': 1,
-        }}
-        
-        @dag(
-            dag_id='{pipeline_name}_dag',
-            default_args=default_args,
-            description='DAG for {pipeline_name} pipeline',
-            schedule_interval='{schedule}',
-            start_date=pendulum.datetime(2023, 1, 1),
-            catchup=False,
-            max_active_runs=1,
-        )
-        def load_{pipeline_name}_data():
-            tasks = PipelineTasksGroup(
-                pipeline_name="{pipeline_name}",
-                use_data_folder=False,
-                wipe_local_data=True,
-                use_task_logger=True,
-                retry_policy=Retrying(stop=stop_after_attempt(3), reraise=True),
-            )
-        
-            {pipeline_code}
-        
-            # Modify the pipeline parameters if needed
-            pipeline = dlt.pipeline(pipeline_name='{pipeline_name}', dataset_name='{dataset_name}', full_refresh=False)
-        
-            # Create the source, the "serialize" decompose option
-            # will convert dlt resources into Airflow tasks.
-            tasks.add_run(
-                pipeline=pipeline,
-                data=source,
-                decompose="serialize",
-                trigger_rule="all_done",
-                retries=0,
-                provide_context=True
-            )
-        
-        load_{pipeline_name}_data()
-        """
+        tasks.add_run(pipeline, {pipeline_name}(), decompose="serialize", trigger_rule="all_done", retries=0, provide_context=True)
+    
+    load_{pipeline_name}_data()
+    """
         return dag_code
