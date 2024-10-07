@@ -32,7 +32,7 @@ def main():
     # Initialize and register plugins
     prompt_generator = GenAIPromptGenerator(azure_endpoint, azure_deployment, azure_api_key)
     pipeline_generator = PipelineGeneratorPlugin(llm, prompt_generator)
-    dag_converter = AirflowDAGConverterPlugin(llm, prompt_generator)
+    dag_converter = AirflowDAGConverterPlugin(output_dir=".\\..\\output\\dags")
     react_reasoner = ReactAdapter(llm, prompt_generator, pipeline_generator, dag_converter)
 
     kernel.register_plugin("prompt_generator", prompt_generator)
@@ -85,7 +85,7 @@ def main():
             }
         },
         "dataset_name": "pokemon_data",
-        "pipeline_name": "pokemon_api_to_azure_blob",
+        "pipeline_name": "pokemon_api_to_datalake",
         "schedule": "0 0 * * *"  # Daily at midnight (cron format)
     }
 
@@ -104,22 +104,37 @@ def main():
     if not pipeline_code or pipeline_code == "No code found":
         pipeline_code = react_result.get("pipeline_code", "No pipeline code generated")
 
-    # Extract Airflow DAG
     # airflow_dag = extract_code_block(full_output, "2. **Convert to Airflow DAG**:")
     # if not airflow_dag or airflow_dag == "No code found":
     #     airflow_dag = react_result.get("airflow_dag", "No Airflow DAG generated")
 
-    print("Generated dlt Pipeline Code:")
-    print(pipeline_code)
-    # print("\nGenerated Airflow DAG:")
-    # print(airflow_dag)
 
     # Save the generated code to files
-    with open("generated_pokemon_pipeline.py", "w") as f:
+    with open("..\\output\\generated_pokemon_pipeline.py", "w") as f:
         f.write(pipeline_code)
 
-    # with open("generated_pokemon_dag.py", "w") as f:
-    #     f.write(airflow_dag)
+    # Extract Airflow DAG
+
+    dag_result = kernel.execute_pipeline({
+        "steps": [
+            {
+                "plugin": "dag_converter",
+                "input": {
+                    "pipeline_code": pipeline_code,
+                    "pipeline_name": pokemon_pipeline_config["pipeline_name"],
+                    "schedule": pokemon_pipeline_config["schedule"],
+                    "dataset_name": pokemon_pipeline_config["dataset_name"]
+                }
+            }
+        ]
+    })
+
+    dag_code = dag_result["dag_converter"]["dag_code"]
+    dag_file_path = dag_result["dag_converter"]["file_path"]
+
+    print("\nGenerated Airflow DAG:")
+    print(dag_code)
+    print(f"\nAirflow DAG has been written to: {dag_file_path}")
 
 
 def extract_code_blocks(text):
