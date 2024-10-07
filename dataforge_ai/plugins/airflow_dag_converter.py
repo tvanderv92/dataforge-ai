@@ -29,9 +29,8 @@ class AirflowDAGConverterPlugin(PluginInterface):
         pipeline_code = input_data['pipeline_code']
         pipeline_name = input_data.get('pipeline_name', self._extract_pipeline_name(pipeline_code))
         schedule = input_data.get('schedule', None)
-        dataset_name = input_data.get('dataset_name', 'default_dataset')
 
-        dag_code = self._generate_airflow_dag(pipeline_code, pipeline_name, schedule, dataset_name)
+        dag_code = self._generate_airflow_dag(pipeline_name, schedule, pipeline_code)
         file_path = self._write_dag_to_file(dag_code, pipeline_name)
 
         self.log_execution("Airflow DAG conversion completed and written to file")
@@ -83,45 +82,58 @@ class AirflowDAGConverterPlugin(PluginInterface):
         match = re.search(r'pipeline_name\s*=\s*["]([\w_]+)["]', pipeline_code)
         return match.group(1) if match else "dlt_pipeline"
 
-    def _generate_airflow_dag(self, pipeline_code: str, pipeline_name: str, schedule: str, dataset_name: str) -> str:
+    def _generate_airflow_dag(self, pipeline_name: str, schedule: str, pipeline_code: str) -> str:
         dag_code = f"""
-    from datetime import timedelta
-    from airflow.decorators import dag
-    
-    import dlt
-    from dlt.common import pendulum
-    from dlt.helpers.airflow_helper import PipelineTasksGroup
-    
-    # Default task arguments
-    default_task_args = {{
-        'owner': 'airflow',
-        'depends_on_past': False,
-        'email': 'test@test.com',
-        'email_on_failure': False,
-        'email_on_retry': False,
-        'retries': 0,
-        'execution_timeout': timedelta(hours=20),
-    }}
-    
-    @dag(
-        schedule_interval='{schedule}',
-        start_date=pendulum.datetime(2023, 7, 1),
-        catchup=False,
-        max_active_runs=1,
-        default_args=default_task_args
+from airflow.decorators import dag
+from airflow.operators.python import PythonOperator
+from datetime import datetime, timedelta
+from dlt.common import pendulum
+from dlt.helpers.airflow_helper import PipelineTasksGroup
+from tenacity import Retrying, stop_after_attempt
+
+# Default DAG arguments
+default_args = {{
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'email': ['airflow@example.com'],
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+    'start_date': datetime(2024, 1, 1),
+}}
+
+@dag(
+    dag_id='{pipeline_name}_dag',
+    default_args=default_args,
+    description='DAG for {pipeline_name} pipeline',
+    schedule_interval='{schedule}',
+    catchup=False,
+    max_active_runs=1,
+)
+def load_{pipeline_name}_data():
+    tasks = PipelineTasksGroup(
+        pipeline_name="{pipeline_name}",
+        use_data_folder=False,
+        wipe_local_data=True,
+        use_task_logger=True,
+        retry_policy=Retrying(stop=stop_after_attempt(3), reraise=True),
     )
-    def load_{pipeline_name}_data():
-        tasks = PipelineTasksGroup("{pipeline_name}", use_data_folder=False, wipe_local_data=True)
-    
-        {pipeline_code}
-    
-        pipeline = dlt.pipeline(pipeline_name='{pipeline_name}',
-                                dataset_name='{dataset_name}',
-                                destination='filesystem',
-                                full_refresh=False)
-        
-        tasks.add_run(pipeline, {pipeline_name}(), decompose="serialize", trigger_rule="all_done", retries=0, provide_context=True)
-    
-    load_{pipeline_name}_data()
-    """
+
+    def run_pipeline(**kwargs):
+        # Execute the DLT pipeline code
+        exec({repr(pipeline_code)})
+
+    run_pipeline_task = PythonOperator(
+        task_id='run_{pipeline_name}_pipeline',
+        python_callable=run_pipeline,
+        provide_context=True,
+        dag=load_{pipeline_name}_data,
+    )
+
+    # Add the task to the tasks group
+    tasks.add_task(run_pipeline_task)
+
+load_{pipeline_name}_data()
+"""
         return dag_code
